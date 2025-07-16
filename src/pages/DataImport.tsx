@@ -46,24 +46,6 @@ export default function DataImport() {
     }
   }, [])
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setDragActive(false)
-    
-    const files = Array.from(e.dataTransfer.files)
-    if (files.length > 0) {
-      handleFileUpload(files[0])
-    }
-  }, [handleFileUpload])
-
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files
-    if (files && files.length > 0) {
-      handleFileUpload(files[0])
-    }
-  }
-
   const handleFileUpload = useCallback(async (file: File) => {
     setError(null)
     setSuccess(null)
@@ -100,18 +82,30 @@ export default function DataImport() {
         }
       )
 
-      // Create project record
+      // Try to save to database first, fallback to localStorage
       const user = await blink.auth.me()
-      const project = await blink.db.projects.create({
+      const project = {
         id: `project_${Date.now()}`,
         user_id: user.id,
         name: file.name.replace(/\.[^/.]+$/, ''), // Remove extension
-        status: 'draft',
+        status: 'draft' as const,
         file_name: file.name,
         file_url: publicUrl,
         file_size: file.size,
-        created_at: new Date().toISOString()
-      })
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      }
+
+      // Try to save to database first
+      try {
+        await blink.db.projects.create(project)
+      } catch (dbError) {
+        console.log('Database not available, using localStorage:', dbError)
+        // Fallback to localStorage
+        const existingProjects = JSON.parse(localStorage.getItem('temp_projects') || '[]')
+        existingProjects.push(project)
+        localStorage.setItem('temp_projects', JSON.stringify(existingProjects))
+      }
 
       setUploadedFile(file)
       setSuccess(`File "${file.name}" uploaded successfully!`)
@@ -128,6 +122,24 @@ export default function DataImport() {
       setUploading(false)
     }
   }, [navigate])
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setDragActive(false)
+    
+    const files = Array.from(e.dataTransfer.files)
+    if (files.length > 0) {
+      handleFileUpload(files[0])
+    }
+  }, [handleFileUpload])
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (files && files.length > 0) {
+      handleFileUpload(files[0])
+    }
+  }
 
   const handleS3Connect = async () => {
     setError(null)
@@ -146,15 +158,27 @@ export default function DataImport() {
       await new Promise(resolve => setTimeout(resolve, 2000))
 
       const user = await blink.auth.me()
-      const project = await blink.db.projects.create({
+      const project = {
         id: `project_${Date.now()}`,
         user_id: user.id,
         name: s3Config.filePath.split('/').pop() || 'S3 Import',
-        status: 'draft',
+        status: 'draft' as const,
         file_name: s3Config.filePath,
         s3_config: JSON.stringify(s3Config),
-        created_at: new Date().toISOString()
-      })
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      }
+
+      // Try to save to database first
+      try {
+        await blink.db.projects.create(project)
+      } catch (dbError) {
+        console.log('Database not available, using localStorage:', dbError)
+        // Fallback to localStorage
+        const existingProjects = JSON.parse(localStorage.getItem('temp_projects') || '[]')
+        existingProjects.push(project)
+        localStorage.setItem('temp_projects', JSON.stringify(existingProjects))
+      }
 
       setSuccess('Successfully connected to S3 and imported data!')
       

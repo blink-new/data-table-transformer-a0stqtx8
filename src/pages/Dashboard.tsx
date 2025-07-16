@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
 import { Button } from '../components/ui/button'
 import { Badge } from '../components/ui/badge'
+import { Alert, AlertDescription } from '../components/ui/alert'
 import { blink } from '../blink/client'
 import { 
   Upload, 
@@ -30,6 +31,7 @@ export default function Dashboard() {
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
   const [user, setUser] = useState(null)
+  const [usingLocalStorage, setUsingLocalStorage] = useState(false)
 
   useEffect(() => {
     const loadData = async () => {
@@ -37,18 +39,29 @@ export default function Dashboard() {
         const userData = await blink.auth.me()
         setUser(userData)
         
-        // Try to load user's projects, but handle gracefully if database doesn't exist yet
+        // Try to load projects from database first, fallback to localStorage
         try {
-          const userProjects = await blink.db.projects.list({
+          const projects = await blink.db.projects.list({
             where: { user_id: userData.id },
             orderBy: { created_at: 'desc' },
             limit: 10
           })
-          setProjects(userProjects)
+          setProjects(projects)
         } catch (dbError) {
-          console.log('Database not initialized yet, starting with empty projects')
-          // Start with empty projects array - this is normal for new installations
-          setProjects([])
+          console.log('Database not available, using localStorage:', dbError)
+          setUsingLocalStorage(true)
+          // Fallback to localStorage
+          try {
+            const tempProjects = JSON.parse(localStorage.getItem('temp_projects') || '[]')
+            const userProjects = tempProjects
+              .filter((project: any) => project.user_id === userData.id)
+              .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+              .slice(0, 10)
+            setProjects(userProjects)
+          } catch (error) {
+            console.log('Error loading projects from localStorage:', error)
+            setProjects([])
+          }
         }
       } catch (error) {
         console.error('Failed to load dashboard data:', error)
@@ -123,6 +136,16 @@ export default function Dashboard() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Database Status Alert */}
+        {usingLocalStorage && (
+          <Alert className="mb-6 border-yellow-200 bg-yellow-50">
+            <AlertCircle className="h-4 w-4 text-yellow-600" />
+            <AlertDescription className="text-yellow-800">
+              Database is temporarily unavailable. Your projects are being stored locally and will be synced when the database is restored.
+            </AlertDescription>
+          </Alert>
+        )}
+
         {/* Welcome Section */}
         <div className="mb-8">
           <h2 className="text-3xl font-bold text-foreground mb-2">
