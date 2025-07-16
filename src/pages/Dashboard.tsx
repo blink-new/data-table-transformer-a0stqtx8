@@ -37,13 +37,19 @@ export default function Dashboard() {
         const userData = await blink.auth.me()
         setUser(userData)
         
-        // Load user's projects
-        const userProjects = await blink.db.projects.list({
-          where: { user_id: userData.id },
-          orderBy: { created_at: 'desc' },
-          limit: 10
-        })
-        setProjects(userProjects)
+        // Try to load user's projects, but handle gracefully if database doesn't exist yet
+        try {
+          const userProjects = await blink.db.projects.list({
+            where: { user_id: userData.id },
+            orderBy: { created_at: 'desc' },
+            limit: 10
+          })
+          setProjects(userProjects)
+        } catch (dbError) {
+          console.log('Database not initialized yet, starting with empty projects')
+          // Start with empty projects array - this is normal for new installations
+          setProjects([])
+        }
       } catch (error) {
         console.error('Failed to load dashboard data:', error)
       } finally {
